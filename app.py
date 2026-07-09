@@ -3,6 +3,7 @@ import pandas as pd
 import urllib.parse
 from src.preprocessing import load_data
 from src.recommendation import build_model, recommend
+from src.recommendation_dl import build_dl_model, recommend_dl
 
 # 1.Wide screen and modern header 
 st.set_page_config(
@@ -70,75 +71,96 @@ st.markdown("""
 
 # 2. Application Launch  ve Cache
 @st.cache_resource
-def init_app():
+def init_all_models():
     data = load_data()
     tfidf_matrix, indices = build_model(data)
-    return data, tfidf_matrix, indices
+    dl_embeddings, dl_indices = build_dl_model(data)
+    return data, tfidf_matrix, indices, dl_embeddings, dl_indices
 
-df, tfidf_matrix, indices = init_app()
+data, tfidf_matrix, tfidf_indices, dl_embeddings, dl_indices = init_all_models()
 
 # 3. Hero Section
 st.title("📖 PickABook")
 st.markdown("### *AI-Powered Content-Based Book Recommendation Engine*")
 st.markdown("---")
 
-# 4. Autocomplete & Enter 
+col_search, col_model = st.columns([2,1])
 
-search_query = st.text_input(
-    "What is the last book you read and enjoyed?",
-    placeholder="Write a book name..."
-)
+with col_search:
+    search_query = st.text_input(
+        "What is the last book you read and enjoyed?",
+        placeholder="Type the full book title and press Enter...",
+        key="book_search_input"
+    )
+
+with col_model:
+    model_choice = st.radio(
+        "🧠 Select the Recommendation Algorithm:",
+        ["TF-IDF (Word-Matching Based)", "Deep Learning (Semantic Search)"],
+        help="TF-IDF looks only at word similarities. Deep Learning, on the other hand, uses a Transformer model to focus on the meaning of the sentence, even if the words differ."
+    )
+
 
 #5.Generates a cover URL from Open Library
-def get_cover_url(book_name):
-    encoded_name = urllib.parse.quote(book_name)
-    return f"https://covers.openlibrary.org/b/isbn/{encoded_name}-M.jpg?default=false"
+def get_cover_url(ISBN):
+    encoded_isbn = urllib.parse.quote(ISBN)
+    return f"https://covers.openlibrary.org/b/isbn/{ISBN}-M.jpg?default=false"
 
 # 6.Suggestions Listing Area
 if search_query != "":
     st.write("") 
-    st.markdown(f"#### 🎯 **'{search_query}'** Best Recommendations Similar to Your Book:")
     
-    with st.spinner("Mathematical vectors are being compared, and recommendations are being prepared..."):
-        results = recommend(search_query, df, tfidf_matrix, indices, top_n=6)
+    matched_books = data[data["Name"].str.lower().str.contains(search_query.lower(), na=False)]
+    
+    if not matched_books.empty:
+       
+        target_book_name = matched_books.sort_values(by="Rating", ascending=False).iloc[0]["Name"]
         
-    if results is not None and not results.empty:
-        st.write("")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        for idx, row in results.reset_index().iterrows():
-            current_col = [col1, col2, col3][idx % 3]
+        if target_book_name != search_query:
+            st.info(f"🔍 '{search_query}' The best match for your search has been selected: **{target_book_name}**")
             
-            with current_col:
+        st.markdown(f"#### 🎯 **'{target_book_name}' Best Recommendations Similar to Your Book:**")
+        
+        if "TF-IDF" in model_choice:
+            with st.spinner("The TF-IDF matrix is ​​being calculated..."):
+                results = recommend(target_book_name, data, tfidf_matrix, tfidf_indices, top_n=6)
+        else:
+            with st.spinner("The Transformer performs deep semantic search..."):
+                results = recommend_dl(target_book_name, data, dl_embeddings, dl_indices, top_n=6)
+            
+        if results is not None and not results.empty:
+            st.write("")
+            col1, col2, col3 = st.columns(3)
+            
+            for idx, row in results.reset_index().iterrows():
+                current_col = [col1, col2, col3][idx % 3]
                 
-                similarity_pct = int(row['Similarity'])
-
-                placeholder_url = "https://via.placeholder.com/180x240/1f293d/ffffff?text=No+Cover"
-                
-                
-
-                clean_title = row['Name'].replace("'", "").replace('"', "")
-                cover_url = f"https://covers.openlibrary.org/b/title/{urllib.parse.quote(clean_title)}-M.jpg?default=false"
-
-                # HTML Card Design
-                card_html = f"""
-                <div class="book-card">
+                with current_col:
+                    similarity_pct = int(row['Similarity'] * 100)
+                    placeholder_url = "https://via.placeholder.com/180x240/1f293d/ffffff?text=No+Cover"
+                    
+                    if 'ISBN' in row and pd.notna(row['ISBN']):
+                        cover_url = f"https://covers.openlibrary.org/b/isbn/{row['ISBN']}-M.jpg?default=false"
+                    else:
+                        cover_url = placeholder_url
+                    
+                    card_html = f"""
                     <div class="book-card">
-                        <div class= "cover-container">
-                            <img class="book-cover" src="{cover_url}" oneerror="this.oneerror=null;this.src='{placeholder_url}';">
+                        <div class="cover-container">
+                            <img class="book-cover" src="{cover_url}" onerror="this.onerror=null;this.src='{placeholder_url}';">
                         </div>
-                    <div class="book-title">📘 {row['Name']}</div>
-                    <div class="book-author">✍️ {row['Authors']}</div>
-                    <div class="metric-container">
-                        <div class="metric-text" style="margin-bottom: 5px;">⭐ {row['Rating']:.2f} / 5</div>
-                        <div class="metric-text">🧬 Similarity: {similarity_pct}%</div>
+                        <div class="book-title">{row['Name']}</div>
+                        <div class="book-author">✍️ {row['Authors']}</div>
+                        <div class="metric-container">
+                            <div class="metric-text" style="margin-bottom: 5px;">⭐ {row['Rating']:.2f} / 5</div>
+                            <div class="metric-text">🧬 Similarity: {similarity_pct}%</div>
+                        </div>
                     </div>
-                </div>
-                """
-                st.markdown(card_html, unsafe_allow_html=True)
-                st.progress(min(max(row['Similarity'], 0.0), 1.0))
-                st.write("") 
-                
+                    """
+                    st.markdown(card_html, unsafe_allow_html=True)
+                    st.progress(min(max(row['Similarity'], 0.0), 1.0))
+                    st.write("") 
+        else:
+            st.error("An error occurred while calculating recommendations.")
     else:
-        st.error("I'm sorry, an error occurred while this book was being processed in our current subset.")
+        st.error("No books matching the word you entered were found. Please try another word.")
