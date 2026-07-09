@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import urllib.parse
 from src.preprocessing import load_data
 from src.recommendation import build_model, recommend
 
@@ -17,19 +18,53 @@ st.markdown("""
     .main { background-color: #0e1117; }
     .book-card {
         background-color: #1f293d;
-        padding: 20px;
+        padding: 15px;
         border-radius: 12px;
-        border-left: 5px solid #ff4b4b;
-        margin-bottom: 15px;
+        border-bottom: 4px solid #ff4b4b;
+        margin-bottom: 20px;
         transition: transform 0.2s;
+        text-align: center;
+        min-height: 400px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
     }
     .book-card:hover {
-        transform: translateY(-2px);
+        transform: translateY(-5px);
         background-color: #26354e;
     }
-    .book-title { color: #ffffff; font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-    .book-author { color: #a3b3cc; font-size: 14px; font-style: italic; }
-    .metric-text { font-size: 13px; font-weight: 600; }
+    .cover-container{
+        height: 220px;
+        display.flex;
+        justify-content:center;
+        align-items: center;
+        margin-bottom: 15px
+    }
+    .book-cover{
+        max-height: 100%;
+        max-width: 100%;
+        border-radius: 6px;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.3);        
+    }
+    .book-title {
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;        
+     }
+    .book-author { color: #a3b3cc; font-size: 13px; font-style: italic; margin-bottom:10px; }
+    .metric-container{
+            background: #161b26;
+            padding: 8px;
+            border-radius: 8px;
+            margin-top: auto;
+            }
+    .metric-text { font-size: 12px; font-weight: 600; color: #ffffff; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -54,7 +89,12 @@ search_query = st.text_input(
     placeholder="Write a book name..."
 )
 
-# 5.Suggestions Listing Area
+#5.Generates a cover URL from Open Library
+def get_cover_url(book_name):
+    encoded_name = urllib.parse.quote(book_name)
+    return f"https://covers.openlibrary.org/b/isbn/{encoded_name}-M.jpg?default=false"
+
+# 6.Suggestions Listing Area
 if search_query != "":
     st.write("") 
     st.markdown(f"#### 🎯 **'{search_query}'** Best Recommendations Similar to Your Book:")
@@ -73,24 +113,31 @@ if search_query != "":
             with current_col:
                 
                 similarity_pct = int(row['Similarity'])
+
+                placeholder_url = "https://via.placeholder.com/180x240/1f293d/ffffff?text=No+Cover"
                 
+                
+
+                clean_title = row['Name'].replace("'", "").replace('"', "")
+                cover_url = f"https://covers.openlibrary.org/b/title/{urllib.parse.quote(clean_title)}-M.jpg?default=false"
+
                 # HTML Card Design
                 card_html = f"""
                 <div class="book-card">
+                    <div class="book-card">
+                        <div class= "cover-container">
+                            <img class="book-cover" src="{cover_url}" oneerror="this.oneerror=null;this.src='{placeholder_url}';">
+                        </div>
                     <div class="book-title">📘 {row['Name']}</div>
                     <div class="book-author">✍️ {row['Authors']}</div>
+                    <div class="metric-container">
+                        <div class="metric-text" style="margin-bottom: 5px;">⭐ {row['Rating']:.2f} / 5</div>
+                        <div class="metric-text">🧬 Similarity: {similarity_pct}%</div>
+                    </div>
                 </div>
                 """
                 st.markdown(card_html, unsafe_allow_html=True)
-                
-               # Star Rating and Similarity Progress Bar
-                col_score, col_progress = st.columns([1, 1.2])
-                with col_score:
-                    st.markdown(f"<span class='metric-text'>⭐ {row['Rating']:.2f} / 5</span>", unsafe_allow_html=True)
-                with col_progress:
-                    st.markdown(f"<span class='metric-text'>🧬 Similarity: {similarity_pct}%</span>", unsafe_allow_html=True)
-                    st.progress(min(max(row['Similarity'], 0.0), 1.0))
-                
+                st.progress(min(max(row['Similarity'], 0.0), 1.0))
                 st.write("") 
                 
     else:
