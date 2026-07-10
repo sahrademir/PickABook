@@ -6,7 +6,6 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 print("🧠 Connecting via HuggingFace Inference Client...")
 
 try:
-    # Resmi client, URL çözümlerini arka planda daha kararlı halleder
     client = InferenceClient(
         model="meta-llama/Meta-Llama-3-8B-Instruct",
         token=HF_TOKEN

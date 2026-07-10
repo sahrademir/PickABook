@@ -6,7 +6,17 @@ def build_dl_model(df):
     model = SentenceTransformer('all-MiniLM-L6-v2')
 
     print("Deep Learning Vectors (Embeddings) are being calculated... This process may take some time.")
-    dl_embeddings = model.encode(df["Description"].tolist(), show_progress_bar=True)
+    combined_text = (
+    df["Name"].fillna("") + " " +
+    df["Authors"].fillna("") + " " +
+    df["Description"].fillna("")
+    ).tolist()
+
+    dl_embeddings = model.encode(
+    combined_text,
+    normalize_embeddings=True,
+    show_progress_bar=True
+    )
 
     indices = pd.Series(df.index, index=df["Name"]).drop_duplicates()
 

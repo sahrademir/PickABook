@@ -20,12 +20,22 @@ def main():
 
     descriptions = df["Description"].fillna("").tolist()
 
-    embeddings = model.encode(descriptions, show_progress_bar=True)
+    combined_text = (
+    df["Name"].fillna("") + " " +
+    df["Authors"].fillna("") + " " +
+    df["Description"].fillna("")
+    ).tolist()
+
+    embeddings = model.encode(
+    combined_text,
+    normalize_embeddings=True,
+    show_progress_bar=True
+    )
 
     print("🗄️FAISS index is being created and vectors are being written to disk...")
     dimension = embeddings.shape[1]
 
-    index = faiss.IndexFlatL2(dimension)
+    index = faiss.IndexFlatIP(dimension)
     index.add(embeddings)
 
     os.makedirs('data', exist_ok=True)
