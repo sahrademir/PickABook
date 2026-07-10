@@ -1,6 +1,7 @@
+import os
 from huggingface_hub import InferenceClient
 
-HF_TOKEN = "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"
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 def get_llm_explanation(target_title, rec_title, target_author, rec_author):
     """
