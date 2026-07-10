@@ -9,6 +9,27 @@ from src.recommendation import build_model, recommend
 from src.recommendation_llm import get_llm_explanation
 from src.user_recommendation import recommend_user_profile
 
+def recommend_user_profile_direct(selected_books, data, faiss_index, top_n=6):
+    import numpy as np
+    
+    # Precise 0-based positional indices from the current dataframe array
+    matched_positions = [int(pos) for pos in np.where(data['Name'].isin(selected_books))[0]]
+    
+    ntotal = faiss_index.ntotal
+    valid_positions = [pos for pos in matched_positions if pos < ntotal]
+    
+    if not valid_positions:
+        return data.head(top_n)
+        
+    vectors = [faiss_index.reconstruct(pos) for pos in valid_positions]
+    profile_vector = np.mean(vectors, axis=0).reshape(1, -1)
+    
+    distances, indices = faiss_index.search(profile_vector, top_n + len(selected_books))
+    
+    rec_indices = [idx for idx in indices[0] if idx not in valid_positions and idx < len(data)][:top_n]
+    
+    return data.iloc[rec_indices].copy()
+
 st.set_page_config(
     page_title="PickABook | AI Recommendation", 
     page_icon="📖", 
@@ -167,12 +188,18 @@ if st.session_state.page == "home":
         st.markdown("#### 🌟 Build Your Reading Profile")
         st.markdown("Select at least 2-3 books you loved. We will blend their embeddings to find your perfect matches!")
         
+        search_query = st.text_input("✍️ Type a book name to search in our library:", key="profile_search_input")
+        filtered_books = []
+        if search_query:
+            filtered_books = data[data['Name'].str.contains(search_query, case=False, na=False)]['Name'].tolist()
+
         selected_display_names = st.multiselect(
-            "Select your favorite books:",
-            options=data['Display_Name'].unique(),
-            placeholder="Search and choose books...",
-            key="user_favorites_input"
+            "Select your favorite books from search results:",
+            options=filtered_books[:10],
+            max_selections=5,
+            key="profile_book_multiselect"
         )
+
         model_choice = "Deep Learning (Semantic Search + FAISS)"
 
     results = None
@@ -204,18 +231,31 @@ if st.session_state.page == "home":
                 with st.spinner("FAISS lightspeed search..."):
                     results = recommend_faiss(target_book_name, data, faiss_index, top_n=6)
 
-    elif rec_mode == "My Favorite Books" and len(selected_display_names) > 0:
-        if st.button("🚀 Generate Profile Recommendations", use_container_width=True) or st.session_state.profile_triggered:
-            st.session_state.profile_triggered = True
+    elif rec_mode == "My Favorite Books":
+        if len(selected_display_names) > 0:
+            if "profile_triggered" not in st.session_state:
+                st.session_state.profile_triggered = False
+
+            if st.button("🚀 Generate Profile Recommendations", use_container_width=True):
+                st.session_state.profile_triggered = True
+                if "profile_results" in st.session_state:
+                    del st.session_state.profile_results
+
+            if st.session_state.profile_triggered:
+                selected_favorites = data[data['Name'].isin(selected_display_names)]['Name'].tolist()
+                st.markdown("#### 🧬 Personalized Recommendations Based on Your Favorites:")
             
-            selected_favorites = data[data['Display_Name'].isin(selected_display_names)]['Name'].tolist()
-            
-            st.markdown(f"#### 🧬 Personalized Recommendations Based on Your Favorites:")
-            target_book_name = ", ".join(selected_favorites[:3]) + ("..." if len(selected_favorites) > 3 else "")
-            target_book_author = "Your Custom Reading Taste"
-            
-            with st.spinner("Blending embeddings and scanning library..."):
-                results = recommend_user_profile(selected_favorites, data, faiss_index, top_n=6)
+                if "profile_results" not in st.session_state:
+                    with st.spinner("Blending embeddings and scanning library..."):
+                        if "profile_results" not in st.session_state:
+                            with st.spinner("Blending embeddings and scanning library..."):
+                                st.session_state.profile_results = recommend_user_profile_direct(selected_favorites, data, faiss_index, top_n=6)
+
+                results = st.session_state.profile_results
+        else:
+            st.session_state.profile_triggered = False
+            if "profile_results" in st.session_state:
+                del st.session_state.profile_results
 
     if results is not None and not results.empty:
         st.write("")
@@ -225,29 +265,47 @@ if st.session_state.page == "home":
             current_col = [col1, col2, col3][idx % 3]
             
             with current_col:
-                similarity_pct = int(row['Similarity'] * 100)
-                placeholder_url = "https://via.placeholder.com/180x240/1f293d/ffffff?text=No+Cover"
-                
-                if isbn_column in row and pd.notna(row[isbn_column]) and str(row[isbn_column]).strip() != "":
-                    cover_url = f"https://covers.openlibrary.org/b/isbn/{str(row[isbn_column]).strip()}-M.jpg?default=false"
+                if 'Similarity' in row:
+                    similarity_pct = int(row['Similarity'] * 100)
+                    similarity_text = f"🎯 {similarity_pct}% Match"
                 else:
-                    cover_url = placeholder_url
+                    similarity_text = "🧬 Profile Match"
+
+                placeholder_url = "https://via.placeholder.com/180x240/1f293d/ffffff?text=No+Cover"
+                cover_url = placeholder_url
+                
+                if isbn_column is not None and isbn_column in row and pd.notna(row[isbn_column]):
+                    raw_isbn = str(row[isbn_column]).strip()
+                    if raw_isbn.endswith('.0'):
+                        raw_isbn = raw_isbn[:-2]
+                    
+                    clean_isbn = "".join(c for c in raw_isbn if c.isalnum())
+                    
+                    if len(clean_isbn) >= 9:
+                        encoded_placeholder = urllib.parse.quote_plus(placeholder_url)
+                        cover_url = f"https://covers.openlibrary.org/b/isbn/{clean_isbn}-M.jpg?default={encoded_placeholder}"
                 
                 card_html = f"""
                 <div class="book-card">
                     <div class="cover-container">
-                        <img class="book-cover" src="{cover_url}" onerror="this.onerror=null;this.src='{placeholder_url}';">
+                        <img class="book-cover" src="{cover_url}">
                     </div>
-                    <div class="book-title">{row['Name']}</div>
+                    <div class="book-title">📘 {row['Name']}</div>
                     <div class="book-author">✍️ {row['Authors']}</div>
                     <div class="metric-container">
                         <div class="metric-text" style="margin-bottom: 5px;">⭐ {row['Rating']:.2f} / 5</div>
-                        <div class="metric-text">🧬 Profile Fit: {similarity_pct}%</div>
+                        <div class="metric-text">🧬 Profile Fit: {similarity_text}%</div>
                     </div>
                 </div>
                 """
                 st.markdown(card_html, unsafe_allow_html=True)
-                st.progress(min(max(row['Similarity'], 0.0), 1.0))
+                
+                if 'Similarity' in row:
+                    progress_value = min(max(float(row['Similarity']), 0.0), 1.0)
+                else:
+                    progress_value = 0.95
+
+                st.progress(progress_value)
                 
                 st.button(
                     "✨ Why This Book?", 

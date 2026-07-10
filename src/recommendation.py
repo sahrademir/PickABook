@@ -40,4 +40,3 @@ def recommend(book_name, df, tfidf_matrix, indices, top_n=10):
 
     return recommendations
 
-    
