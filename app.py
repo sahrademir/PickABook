@@ -5,6 +5,7 @@ import faiss
 import pickle
 from src.preprocessing import load_data
 from src.recommendation import build_model, recommend
+from src.recommendation_llm import get_llm_explanation
 
 st.set_page_config(
     page_title="PickABook | AI Recommendation", 
@@ -68,6 +69,18 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- GLOBAL ON_CLICK FONKSİYONU (Döngünün dışına, en güvenli yere aldık!) ---
+def open_details(book_name, book_authors, book_rating, img_url, t_name, t_auth):
+    st.session_state.selected_book = {
+        "title": book_name,
+        "author": book_authors,
+        "cover": img_url,
+        "rating": book_rating,
+        "target_title": t_name,
+        "target_author": t_auth
+    }
+    st.session_state.page = "details"
+
 @st.cache_resource
 def init_all_models():
     with open("data/books_metadata.pkl", "rb") as f:
@@ -75,7 +88,6 @@ def init_all_models():
     
     faiss_index = faiss.read_index("data/books_index.faiss")
     
-    # TF-IDF modelini güncel tablomuz (data) üzerinden anlık olarak yeniden inşa ediyoruz
     tfidf_matrix, tfidf_indices = build_model(data)
     
     isbn_col = None
@@ -107,85 +119,144 @@ def recommend_faiss(target_title, df, index, top_n=6):
     except Exception as e:
         return None
 
-st.title("📖 PickABook")
-st.markdown("### *AI-Powered Content-Based Book Recommendation Engine*")
-st.markdown("---")
+if "page" not in st.session_state:
+    st.session_state.page = "home"
 
-col_search, col_model = st.columns([2,1])
+if "selected_book" not in st.session_state:
+    st.session_state.selected_book = None
 
-with col_search:
-    search_query = st.text_input(
-        "What is the last book you read and enjoyed?",
-        placeholder="Type a book title or keyword...",
-        key="book_search_input"
-    )
+# --- 1. SCREEN: HOME ---
+if st.session_state.page == "home":
 
-with col_model:
-    model_choice = st.radio(
-        "🧠 Select the Recommendation Algorithm:",
-        ["TF-IDF (Word-Matching Based)", "Deep Learning (Semantic Search + FAISS)"]
-    )
+    st.title("📖 PickABook")
+    st.markdown("### *AI-Powered Content-Based Book Recommendation Engine*")
+    st.markdown("---")
 
-if search_query != "":
-    st.write("") 
-    
-    matched_books = data[data["Name"].str.lower().str.contains(search_query.lower(), na=False)]
-    
-    if not matched_books.empty:
-        target_book_name = matched_books.sort_values(by="Rating", ascending=False).iloc[0]["Name"]
+    col_search, col_model = st.columns([2,1])
+
+    with col_search:
+        search_query = st.text_input(
+            "What is the last book you read and enjoyed?",
+            placeholder="Type a book title or keyword...",
+            key="book_search_input"
+        )
+
+    with col_model:
+        model_choice = st.radio(
+            "Select the Recommendation Algorithm:",
+            ["TF-IDF (Word-Matching Based)", "Deep Learning (Semantic Search + FAISS)"]
+        )
+
+    if search_query != "":
+        st.write("") 
         
-        if target_book_name != search_query:
-            st.info(f"🔍 Best match for your search: **{target_book_name}**")
-            
-        st.markdown(f"#### 🎯 **'{target_book_name}'** Best Recommendations Similar to Your Book:")
+        matched_books = data[data["Name"].str.lower().str.contains(search_query.lower(), na=False)]
         
-        if "TF-IDF" in model_choice:
-            with st.spinner("Calculating TF-IDF..."):
-                raw_results = recommend(target_book_name, data, tfidf_matrix, tfidf_indices, top_n=6)
-                
-                if raw_results is not None and not raw_results.empty:
-                    results = data[data['Name'].isin(raw_results['Name'])].copy()
-                    results = results.merge(raw_results[['Name', 'Similarity']], on='Name', how='left')
-                    results['Similarity'] = 0.5 + (results['Similarity'] / results['Similarity'].max() * 0.45) if results['Similarity'].max() > 0 else results['Similarity']
-                else:
-                    results = None
-        else:
-            with st.spinner("FAISS lightspeed search..."):
-                results = recommend_faiss(target_book_name, data, faiss_index, top_n=6)
+        if not matched_books.empty:
+            target_book_name = matched_books.sort_values(by="Rating", ascending=False).iloc[0]["Name"]
+            target_book_author = matched_books.sort_values(by="Rating", ascending=False).iloc[0]["Authors"]
             
-        if results is not None and not results.empty:
-            st.write("")
-            col1, col2, col3 = st.columns(3)
-            
-            for idx, row in results.reset_index().iterrows():
-                current_col = [col1, col2, col3][idx % 3]
+            if target_book_name != search_query:
+                st.info(f"🔍 Best match for your search: **{target_book_name}**")
                 
-                with current_col:
-                    similarity_pct = int(row['Similarity'] * 100)
-                    placeholder_url = "https://via.placeholder.com/180x240/1f293d/ffffff?text=No+Cover"
+            st.markdown(f"#### 🎯 **'{target_book_name}'** Best Recommendations Similar to Your Book:")
+            
+            if "TF-IDF" in model_choice:
+                with st.spinner("Calculating TF-IDF..."):
+                    raw_results = recommend(target_book_name, data, tfidf_matrix, tfidf_indices, top_n=6)
                     
-                    if isbn_column in row and pd.notna(row[isbn_column]) and str(row[isbn_column]).strip() != "":
-                        cover_url = f"https://covers.openlibrary.org/b/isbn/{str(row[isbn_column]).strip()}-M.jpg?default=false"
+                    if raw_results is not None and not raw_results.empty:
+                        results = data[data['Name'].isin(raw_results['Name'])].copy()
+                        results = results.merge(raw_results[['Name', 'Similarity']], on='Name', how='left')
+                        results['Similarity'] = 0.5 + (results['Similarity'] / results['Similarity'].max() * 0.45) if results['Similarity'].max() > 0 else results['Similarity']
                     else:
-                        cover_url = placeholder_url
+                        results = None
+            else:
+                with st.spinner("FAISS lightspeed search..."):
+                    results = recommend_faiss(target_book_name, data, faiss_index, top_n=6)
+                
+            if results is not None and not results.empty:
+                st.write("")
+                col1, col2, col3 = st.columns(3)
+                
+                for idx, row in results.reset_index().iterrows():
+                    current_col = [col1, col2, col3][idx % 3]
                     
-                    card_html = f"""
-                    <div class="book-card">
-                        <div class="cover-container">
-                            <img class="book-cover" src="{cover_url}" onerror="this.onerror=null;this.src='{placeholder_url}';">
+                    with current_col:
+                        similarity_pct = int(row['Similarity'] * 100)
+                        placeholder_url = "https://via.placeholder.com/180x240/1f293d/ffffff?text=No+Cover"
+                        
+                        if isbn_column in row and pd.notna(row[isbn_column]) and str(row[isbn_column]).strip() != "":
+                            cover_url = f"https://covers.openlibrary.org/b/isbn/{str(row[isbn_column]).strip()}-M.jpg?default=false"
+                        else:
+                            cover_url = placeholder_url
+                        
+                        card_html = f"""
+                        <div class="book-card">
+                            <div class="cover-container">
+                                <img class="book-cover" src="{cover_url}" onerror="this.onerror=null;this.src='{placeholder_url}';">
+                            </div>
+                            <div class="book-title">{row['Name']}</div>
+                            <div class="book-author">✍️ {row['Authors']}</div>
+                            <div class="metric-container">
+                                <div class="metric-text" style="margin-bottom: 5px;">⭐ {row['Rating']:.2f} / 5</div>
+                                <div class="metric-text">🧬 Similarity: {similarity_pct}%</div>
+                            </div>
                         </div>
-                        <div class="book-title">{row['Name']}</div>
-                        <div class="book-author">✍️ {row['Authors']}</div>
-                        <div class="metric-container">
-                            <div class="metric-text" style="margin-bottom: 5px;">⭐ {row['Rating']:.2f} / 5</div>
-                            <div class="metric-text">🧬 Similarity: {similarity_pct}%</div>
-                        </div>
-                    </div>
-                    """
-                    st.markdown(card_html, unsafe_allow_html=True)
-                    st.progress(min(max(row['Similarity'], 0.0), 1.0))
-                    st.write("") 
+                        """
+                        st.markdown(card_html, unsafe_allow_html=True)
+                        st.progress(min(max(row['Similarity'], 0.0), 1.0))
+                        
+                        # Artık temizlenmiş ve üst satıra taşınmış global fonksiyona bağlanan buton:
+                        st.button(
+                            "✨ Why This Book?", 
+                            key=f"btn_{idx}", 
+                            use_container_width=True,
+                            on_click=open_details,
+                            args=(row['Name'], row['Authors'], row['Rating'], cover_url, target_book_name, target_book_author)
+                        )
+                        st.write("") 
+            else:
+                st.error("An error occurred.")
         else:
-            st.error("An error occurred.")
-    else:
-        st.error("No books found.")
+            st.error("No books found.")
+
+# --- 2. SECREEN: DETAILS ---
+else:
+    book = st.session_state.selected_book
+
+    st.title("📖 Why do these books similar to each other? ")
+    st.markdown("---")
+
+    col_left, col_right = st.columns([1,2])
+
+    with col_left:
+        st.image(book['cover'], width=220)
+        st.subheader(book['title'])
+        st.markdown(f"**✍️ Author:** {book['author']}")
+        st.markdown(f"**⭐ Global Rating:** {book['rating']:.2f} / 5")
+
+        st.write("")
+        if st.button("⬅️ Back to Recommendations", use_container_width=True):
+            st.session_state.page = "home"
+            st.session_state.selected_book = None
+            st.rerun()
+
+    with col_right:
+        st.info(f"🔍 Connection Path: This book was recommended because you read and liked **'{book['target_title']}'** by *{book['target_author']}*.")
+
+        st.markdown("### 🧠 Llama-3 AI Semantic Explanation")
+        st.markdown("We've sent both books' metadata to the open-source Llama-3 model on Hugging Face to dissect their underlying narrative bond:")
+        
+        with st.spinner("Analyzing thematic layers and writing styles via Llama-3..."):
+            explanation = get_llm_explanation(
+                target_title=book['target_title'],
+                rec_title=book['title'],
+                target_author=book['target_author'],
+                rec_author=book['author']
+            )
+            
+        st.success(explanation)
+        
+        st.markdown(f"---")
+        st.caption("🤖 *Note: This explanation is fully generated in real-time by Meta-Llama-3-8B-Instruct model deployed on Hugging Face Inference API infrastructure.*")
