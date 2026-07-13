@@ -1,0 +1,7 @@
+*.csv
+*.zip
+data/raw/
+data/processed/
+data/*.faiss
+data/*.pkl
+.env
