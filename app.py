@@ -185,10 +185,10 @@ if st.session_state.page == "home":
             )
             
     else:
-        st.markdown("#### 🌟 Build Your Reading Profile")
+        st.markdown("#### Build Your Reading Profile")
         st.markdown("Select at least 2-3 books you loved. We will blend their embeddings to find your perfect matches!")
         
-        search_query = st.text_input("✍️ Type a book name to search in our library:", key="profile_search_input")
+        search_query = st.text_input("Type a book name to search in our library:", key="profile_search_input")
         filtered_books = []
         if search_query:
             filtered_books = data[data['Name'].str.contains(search_query, case=False, na=False)]['Name'].tolist()
@@ -214,9 +214,9 @@ if st.session_state.page == "home":
             target_book_author = matched_books.sort_values(by="Rating", ascending=False).iloc[0]["Authors"]
             
             if target_book_name != search_query:
-                st.info(f"🔍 Best match for your search: **{target_book_name}**")
+                st.info(f"Best match for your search: **{target_book_name}**")
                 
-            st.markdown(f"#### 🎯 **'{target_book_name}'** Best Recommendations Similar to Your Book:")
+            st.markdown(f"#### **'{target_book_name}'** Best Recommendations Similar to Your Book:")
             
             if "TF-IDF" in model_choice:
                 with st.spinner("Calculating TF-IDF..."):
@@ -236,7 +236,7 @@ if st.session_state.page == "home":
             if "profile_triggered" not in st.session_state:
                 st.session_state.profile_triggered = False
 
-            if st.button("🚀 Generate Profile Recommendations", use_container_width=True):
+            if st.button("Generate Profile Recommendations", use_container_width=True):
                 st.session_state.profile_triggered = True
                 if "profile_results" in st.session_state:
                     del st.session_state.profile_results
@@ -339,9 +339,9 @@ else:
             st.rerun()
 
     with col_right:
-        st.info(f"🔍 Connection Path: This book was recommended because you read and liked **'{book['target_title']}'** by *{book['target_author']}*.")
+        st.info(f" Connection Path: This book was recommended because you read and liked **'{book['target_title']}'** by *{book['target_author']}*.")
 
-        st.markdown("### 🧠 Llama-3 AI Semantic Explanation")
+        st.markdown("### Llama-3 AI Semantic Explanation")
         with st.spinner("Analyzing thematic layers and writing styles via Llama-3..."):
             explanation = get_llm_explanation(
                 target_title=book['target_title'],
