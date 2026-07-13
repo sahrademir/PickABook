@@ -59,4 +59,22 @@ streamlit run app.py
 
 <img width="400" height="239" alt="Ekran Kaydı 2026-07-10 210157" src="https://github.com/user-attachments/assets/1ff9fa66-2176-4aec-95de-b633c9602401" />
 
+## Additional Model Files
+
+Due to GitHub file size limitations, the FAISS index and metadata files are not included in this repository.
+
+They can be downloaded from Google Drive:
+
+- books_index.faiss
+- books_metadata.pkl
+
+After downloading, place both files inside:
+
+data/
+
+before running the application.
+
+- [Download books_index.faiss](https://drive.google.com/file/d/1rDPGhtlzkNkUA3kTCIbUInRgfV-OrMTQ/view?usp=drive_link)
+- [Download books_metadata.pkl](https://drive.google.com/file/d/1Lnr21ciGeK33zTS04ci5Mk6QKRi4Zz82/view?usp=drive_link)
+
 
