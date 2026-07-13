@@ -3,3 +3,5 @@ pandas
 numpy
 faiss-cpu>=1.14.3
 python-dotenv
+scikit-learn
+torch
