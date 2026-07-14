@@ -1,34 +1,11 @@
 import streamlit as st
 import pandas as pd
 import urllib.parse
-import faiss
 import pickle
-import numpy as np
-from src.preprocessing import load_data
-from src.recommendation import build_model, recommend
-from src.recommendation_llm import get_llm_explanation
-from src.user_recommendation import recommend_user_profile
+import requests  # Added for FastAPI communication
 
-def recommend_user_profile_direct(selected_books, data, faiss_index, top_n=6):
-    import numpy as np
-    
-    # Precise 0-based positional indices from the current dataframe array
-    matched_positions = [int(pos) for pos in np.where(data['Name'].isin(selected_books))[0]]
-    
-    ntotal = faiss_index.ntotal
-    valid_positions = [pos for pos in matched_positions if pos < ntotal]
-    
-    if not valid_positions:
-        return data.head(top_n)
-        
-    vectors = [faiss_index.reconstruct(pos) for pos in valid_positions]
-    profile_vector = np.mean(vectors, axis=0).reshape(1, -1)
-    
-    distances, indices = faiss_index.search(profile_vector, top_n + len(selected_books))
-    
-    rec_indices = [idx for idx in indices[0] if idx not in valid_positions and idx < len(data)][:top_n]
-    
-    return data.iloc[rec_indices].copy()
+# Configuration for backend URL
+API_URL = "http://127.0.0.1:8000/recommend"
 
 st.set_page_config(
     page_title="PickABook | AI Recommendation", 
@@ -92,27 +69,25 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-def open_details(book_name, book_authors, book_rating, img_url, t_name, t_auth):
+def open_details(book_name, book_authors, book_rating, img_url, t_name, t_auth, llm_explanation=None):
     st.session_state.selected_book = {
         "title": book_name,
         "author": book_authors,
         "cover": img_url,
         "rating": book_rating,
         "target_title": t_name,
-        "target_author": t_auth
+        "target_author": t_auth,
+        "llm_explanation": llm_explanation
     }
     st.session_state.page = "details"
 
 @st.cache_resource
 def init_all_models():
+    # Only loading light metadata for UI search and display names
     with open("data/books_metadata.pkl", "rb") as f:
         data = pickle.load(f)
     
-    faiss_index = faiss.read_index("data/books_index.faiss")
-    
     data['Display_Name'] = data['Name'] + " (by " + data['Authors'] + ")"
-    
-    tfidf_matrix, tfidf_indices = build_model(data)
     
     isbn_col = None
     for col in ['ISBN', 'isbn', 'ISBN13', 'Isbn']:
@@ -120,28 +95,9 @@ def init_all_models():
             isbn_col = col
             break
             
-    return data, faiss_index, tfidf_matrix, tfidf_indices, isbn_col
+    return data, isbn_col
 
-data, faiss_index, tfidf_matrix, tfidf_indices, isbn_column = init_all_models()
-
-def recommend_faiss(target_title, df, index, top_n=6):
-    try:
-        idx = df[df['Name'] == target_title].index[0]
-        target_vector = index.reconstruct(int(idx)).reshape(1, -1)
-        distances, indices = index.search(target_vector, top_n + 1)
-        
-        sim_indices = indices[0][1:]
-        sim_distances = distances[0][1:]
-        
-        min_d, max_d = min(sim_distances), max(sim_distances)
-        span = (max_d - min_d) if (max_d - min_d) > 0 else 1
-        similarities = [0.95 - ((d - min_d) / span) * 0.4 for d in sim_distances]
-        
-        recommended_df = df.iloc[sim_indices].copy()
-        recommended_df['Similarity'] = similarities
-        return recommended_df
-    except Exception as e:
-        return None
+data, isbn_column = init_all_models()
 
 if "page" not in st.session_state:
     st.session_state.page = "home"
@@ -219,17 +175,40 @@ if st.session_state.page == "home":
             st.markdown(f"#### **'{target_book_name}'** Best Recommendations Similar to Your Book:")
             
             if "TF-IDF" in model_choice:
-                with st.spinner("Calculating TF-IDF..."):
-                    raw_results = recommend(target_book_name, data, tfidf_matrix, tfidf_indices, top_n=6)
-                    if raw_results is not None and not raw_results.empty:
-                        results = data[data['Name'].isin(raw_results['Name'])].copy()
-                        results = results.merge(raw_results[['Name', 'Similarity']], on='Name', how='left')
-                        results['Similarity'] = 0.5 + (results['Similarity'] / results['Similarity'].max() * 0.45) if results['Similarity'].max() > 0 else results['Similarity']
-                    else:
-                        results = None
+                with st.spinner("Calculating TF-IDF on Backend API..."):
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/content",
+                            json={"book_title": target_book_name, "top_n": 6}
+                        )
+                        if response.status_code == 200:
+                            api_data = response.json().get("results", [])
+                            results = pd.DataFrame(api_data)
+                            if not results.empty:
+                                results = results.rename(columns={"similarity_score": "Similarity", "title": "Name"})
+                                # Restore metadata details for selected recommendations
+                                results = results.merge(data[['Name', 'Authors', 'Rating', isbn_column]], on='Name', how='left')
+                        else:
+                            st.error(f"Backend API Error: {response.text}")
+                    except Exception as e:
+                        st.error(f"Could not connect to Backend: {e}")
             else:
-                with st.spinner("FAISS lightspeed search..."):
-                    results = recommend_faiss(target_book_name, data, faiss_index, top_n=6)
+                with st.spinner("FAISS lightspeed search on Backend API..."):
+                    try:
+                        response = requests.post(
+                            f"{API_URL}/semantic",
+                            json={"query_text": target_book_name, "top_n": 6}
+                        )
+                        if response.status_code == 200:
+                            api_data = response.json().get("results", [])
+                            results = pd.DataFrame(api_data)
+                            if not results.empty:
+                                results = results.rename(columns={"similarity_score": "Similarity", "title": "Name"})
+                                results = results.merge(data[['Name', 'Authors', 'Rating', isbn_column]], on='Name', how='left')
+                        else:
+                            st.error(f"Backend API Error: {response.text}")
+                    except Exception as e:
+                        st.error(f"Could not connect to Backend: {e}")
 
     elif rec_mode == "My Favorite Books":
         if len(selected_display_names) > 0:
@@ -246,12 +225,25 @@ if st.session_state.page == "home":
                 st.markdown("#### 🧬 Personalized Recommendations Based on Your Favorites:")
             
                 if "profile_results" not in st.session_state:
-                    with st.spinner("Blending embeddings and scanning library..."):
-                        if "profile_results" not in st.session_state:
-                            with st.spinner("Blending embeddings and scanning library..."):
-                                st.session_state.profile_results = recommend_user_profile_direct(selected_favorites, data, faiss_index, top_n=6)
+                    with st.spinner("Blending embeddings on Backend API..."):
+                        try:
+                            response = requests.post(
+                                f"{API_URL}/user-blend",
+                                json={"favorite_books": selected_favorites, "top_n": 6}
+                            )
+                            if response.status_code == 200:
+                                api_data = response.json().get("results", [])
+                                df_res = pd.DataFrame(api_data)
+                                if not df_res.empty:
+                                    df_res = df_res.rename(columns={"similarity_score": "Similarity", "title": "Name"})
+                                    df_res = df_res.merge(data[['Name', 'Authors', 'Rating', isbn_column]], on='Name', how='left')
+                                    st.session_state.profile_results = df_res
+                            else:
+                                st.error(f"Backend API Error: {response.text}")
+                        except Exception as e:
+                            st.error(f"Could not connect to Backend: {e}")
 
-                results = st.session_state.profile_results
+                results = st.session_state.get("profile_results")
         else:
             st.session_state.profile_triggered = False
             if "profile_results" in st.session_state:
@@ -266,7 +258,7 @@ if st.session_state.page == "home":
             
             with current_col:
                 if 'Similarity' in row:
-                    similarity_pct = int(row['Similarity'] * 100)
+                    similarity_pct = int(row['Similarity']) 
                     similarity_text = f"🎯 {similarity_pct}% Match"
                 else:
                     similarity_text = "🧬 Profile Match"
@@ -294,25 +286,28 @@ if st.session_state.page == "home":
                     <div class="book-author">✍️ {row['Authors']}</div>
                     <div class="metric-container">
                         <div class="metric-text" style="margin-bottom: 5px;">⭐ {row['Rating']:.2f} / 5</div>
-                        <div class="metric-text">🧬 Profile Fit: {similarity_text}%</div>
+                        <div class="metric-text">🧬 Profile Fit: {similarity_text}</div>
                     </div>
                 </div>
                 """
                 st.markdown(card_html, unsafe_allow_html=True)
                 
                 if 'Similarity' in row:
-                    progress_value = min(max(float(row['Similarity']), 0.0), 1.0)
+                    progress_val = float(row['Similarity'])
+                    progress_value = min(max(progress_val / 100.0, 0.0), 1.0)
                 else:
                     progress_value = 0.95
 
                 st.progress(progress_value)
+                
+                llm_exp = row.get("llm_explanation") if "llm_explanation" in row else None
                 
                 st.button(
                     "✨ Why This Book?", 
                     key=f"btn_{idx}", 
                     use_container_width=True,
                     on_click=open_details,
-                    args=(row['Name'], row['Authors'], row['Rating'], cover_url, target_book_name, target_book_author)
+                    args=(row['Name'], row['Authors'], row['Rating'], cover_url, target_book_name, target_book_author, llm_exp)
                 )
                 st.write("") 
     elif (rec_mode == "Similar Book" and search_query != "") or (rec_mode == "My Favorite Books" and len(selected_display_names) > 0 and st.session_state.profile_triggered):
@@ -342,15 +337,12 @@ else:
         st.info(f" Connection Path: This book was recommended because you read and liked **'{book['target_title']}'** by *{book['target_author']}*.")
 
         st.markdown("### Llama-3 AI Semantic Explanation")
-        with st.spinner("Analyzing thematic layers and writing styles via Llama-3..."):
-            explanation = get_llm_explanation(
-                target_title=book['target_title'],
-                rec_title=book['title'],
-                target_author=book['target_author'],
-                rec_author=book['author']
-            )
-            
-        st.success(explanation)
+        
+        # Pulling the explanation already computed on backend side
+        if book.get("llm_explanation"):
+            st.success(book["llm_explanation"])
+        else:
+            st.warning("No pre-computed explanation available for this item.")
         
         st.markdown(f"---")
         st.caption("🤖 *Note: This explanation is fully generated in real-time by Meta-Llama-3-8B-Instruct model deployed on Hugging Face Inference API infrastructure.*")

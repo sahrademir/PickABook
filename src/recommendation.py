@@ -19,16 +19,28 @@ def recommend(book_name, df, tfidf_matrix, indices, top_n=10):
     if matches.empty:
         return None
 
-    idx = matches.index[0]
+    df_idx = matches.index[0]
+
+    if isinstance(indices, dict):
+        matrix_row_idx = indices.get(df_idx, None)
+    else:
+        try:
+            matrix_row_idx = df.index.get_loc(df_idx)
+        except:
+            matrix_row_idx = list(df.index).index(df_idx)
+
+    if matrix_row_idx is None:
+        matrix_row_idx = df_idx
 
     similarity_scores = cosine_similarity(
-        tfidf_matrix[idx],
+        tfidf_matrix[matrix_row_idx],
         tfidf_matrix
     ).flatten()
 
     similar_indices = similarity_scores.argsort()[::-1]
 
-    similar_indices = similar_indices[1:top_n + 1]
+    similar_indices = [i for i in similar_indices if i != matrix_row_idx][:top_n]
+    
 
     recommendations = df.iloc[similar_indices][
         ["Name", "Authors", "Rating"]

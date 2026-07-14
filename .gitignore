@@ -2,6 +2,8 @@
 *.zip
 data/raw/
 data/processed/
-data/*.faiss
-data/*.pkl
+*.faiss
+*.pkl
 .env
+.venv/
+__pycache__/
