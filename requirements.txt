@@ -1,9 +1,11 @@
 streamlit
 pandas
 numpy
-faiss-cpu>=1.14.3
+faiss-cpu>=1.7.4
 python-dotenv
 scikit-learn
-torch
+torch --index-url https://download.pytorch.org/whl/cpu
 fastapi
 uvicorn
+requests
+httpx

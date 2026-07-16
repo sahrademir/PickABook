@@ -13,7 +13,7 @@ def build_model(df):
 def recommend(book_name, df, tfidf_matrix, indices, top_n=10):
     # Partial search
     matches = df[
-        df["Name"].str.contains(book_name, case=False, na=False)
+        df["Name"].str.contains(book_name, case=False, na=False, regex=False)
     ]
 
     if matches.empty:
