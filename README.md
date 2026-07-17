@@ -1,5 +1,5 @@
-📖 PickABook
-AI-Powered Hybrid Book Recommendation System
+## 📖 PickABook
+## AI-Powered Hybrid Book Recommendation System
 
 PickABook is an end-to-end AI-powered hybrid recommendation system that suggests books based on semantic similarity and personalized reading preferences. The application combines traditional NLP, deep learning, vector search, Large Language Models, and a RESTful backend to deliver fast, explainable, and personalized recommendations through an interactive web interface.
 
