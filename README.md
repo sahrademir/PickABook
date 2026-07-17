@@ -3,7 +3,7 @@ AI-Powered Hybrid Book Recommendation System
 
 PickABook is an end-to-end AI-powered hybrid recommendation system that suggests books based on semantic similarity and personalized reading preferences. The application combines traditional NLP, deep learning, vector search, Large Language Models, and a RESTful backend to deliver fast, explainable, and personalized recommendations through an interactive web interface.
 
-✨ Features:
+## ✨ Features:
 
 📚 Content-Based Recommendation (TF-IDF + Cosine Similarity)
 🧠 Deep Learning Semantic Search (Sentence Transformers)
@@ -17,7 +17,16 @@ PickABook is an end-to-end AI-powered hybrid recommendation system that suggests
 🎨 Interactive Streamlit interface
 🚀 End-to-End AI recommendation pipeline
 
-🏗️ System Architecture:
+## 🏆 Key Achievements
+
+- Built an end-to-end AI-powered hybrid book recommendation system from scratch.
+- Combined TF-IDF, Sentence Transformers, FAISS, and LLMs into a single recommendation pipeline.
+- Developed personalized user-to-book recommendations using semantic embeddings.
+- Designed and exposed recommendation services through a FastAPI REST API.
+- Containerized the application using Docker for portable deployment.
+- Built an interactive Streamlit interface with AI-generated recommendation explanations.
+
+## 🏗️ System Architecture:
 
                 User
                   │
@@ -40,7 +49,7 @@ PickABook is an end-to-end AI-powered hybrid recommendation system that suggests
         Goodreads Dataset
 
 
-🛠 Tech Stack:
+## 🛠 Tech Stack:
 
 Category	Technologies
 Language	Python
@@ -55,7 +64,7 @@ Frontend	Streamlit
 Containerization	Docker
 Version Control	Git & GitHub
 
-📂 Project Structure:
+## 📂 Project Structure:
 
 BookRec_Project/
 │
@@ -87,7 +96,7 @@ BookRec_Project/
 
 
 
-🚀 Installation:
+## 🚀 Installation:
 
 Clone repository
 git clone https://github.com/sahrademir/PickABook.git
@@ -135,7 +144,7 @@ docker run -p 8501:8501 pickabook
 
 <img width="400" height="239" alt="Ekran Kaydı 2026-07-10 210157" src="https://github.com/user-attachments/assets/1ff9fa66-2176-4aec-95de-b633c9602401" />
 
-📊 Dataset:
+## 📊 Dataset:
 
 Dataset used:
 
