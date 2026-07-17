@@ -142,7 +142,8 @@ docker run -p 8501:8501 pickabook
 
 ## 🎬 Application Demo
 
-<img width="400" height="239" alt="Ekran Kaydı 2026-07-10 210157" src="https://github.com/user-attachments/assets/1ff9fa66-2176-4aec-95de-b633c9602401" />
+<img width="400" height="214" alt="Ekran Kaydı 2026-07-17 101319" src="https://github.com/user-attachments/assets/10085915-52e2-4232-afbb-17a96c9e9913" />
+
 
 ## 📊 Dataset:
 
